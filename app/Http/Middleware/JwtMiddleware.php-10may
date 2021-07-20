@@ -1,0 +1,58 @@
+<?php
+
+    namespace App\Http\Middleware;
+
+    use Closure;
+    use JWTAuth;
+    use Exception;
+    use Tymon\JWTAuth\Http\Middleware\BaseMiddleware;
+    
+    use Config;
+
+    class JwtMiddleware extends BaseMiddleware
+    {
+
+        /**
+         * Handle an incoming request.
+         *
+         * @param  \Illuminate\Http\Request  $request
+         * @param  \Closure  $next
+         * @return mixed
+         */
+        public function handle($request, Closure $next)
+        {
+            try {
+                $user = JWTAuth::parseToken()->authenticate();
+                
+                //echo $user->current_login_token.'<br>';print_r($request->bearerToken());exit;
+                //
+                //if password change from one device then logout from another device
+                if($user->current_login_token != $request->bearerToken()) {
+                    return response()->json(['status' => Config::get('app.status_codes.NP_TOKEN_MISMATCH'), 'message' => 'Token mismatch, please login again', 'data' => json_decode("{}")]);
+                }
+                
+                if(!$user->id) {
+                    return response()->json(['status' => Config::get('app.status_codes.NP_RELOGIN'), 'message' => 'Token Expired', 'data' => json_decode("{}")]);
+                } elseif($user->suspended == 1) {
+                    return response()->json(['status' => Config::get('app.status_codes.NP_ACCOUNT_SUSPEND'), 'message' => 'Account suspended', 'data'=> json_decode("{}")]);
+                } elseif(!$user->status) {
+                    return response()->json(['status' => Config::get('app.status_codes.NP_ACCOUNT_INACTIVE'), 'message' => 'Account inactive', 'data' => json_decode("{}")]);
+                    
+                }
+                
+            } catch (Exception $e) {
+                
+                if ($e instanceof \Tymon\JWTAuth\Exceptions\TokenInvalidException){
+                    return response()->json(['status' => Config::get('app.status_codes.NP_INVALID_TOKEN'), 'message' => 'Invalid token', 'data' => json_decode("{}")]);
+                    //return response()->json(['status' => 'Token is Invalid']);
+                }else if ($e instanceof \Tymon\JWTAuth\Exceptions\TokenExpiredException){
+                    //return response()->json(['status' => 'Token is Expired']);
+                    return response()->json(['status' => Config::get('app.status_codes.NP_TOKEN_EXPIRED'), 'message' => 'Token expired', 'data' => json_decode("{}")]);
+                }else{
+                    //return response()->json(['status' => 'Authorization Token not found']);
+                    return response()->json(['status' => Config::get('app.status_codes.NP_TOKEN_NOT_FOUND'), 'message' => 'Token not found', 'data' => json_decode("{}")]);
+                }
+            }
+            return $next($request);
+        }
+    }
